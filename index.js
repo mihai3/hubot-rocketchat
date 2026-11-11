@@ -14,7 +14,7 @@ const settings = {
   username: process.env.ROCKETCHAT_USER || 'bot',
   password: process.env.ROCKETCHAT_PASSWORD || 'pass',
   ldap: process.env.ROCKETCHAT_AUTH === 'ldap',
-  host: (process.env.ROCKETCHAT_URL || 'localhost:3000').replace(/(^\w+:|^)\/\//, ''),
+  host: (process.env.ROCKETCHAT_URL || 'localhost:3000').replace(/^\w+:\/\//, ''),
   // Enable SSL by default if the Rocket.Chat URL contains https, as the
   // 0.2.x SDK did; ROCKETCHAT_USE_SSL=true|false overrides explicitly
   useSsl: (process.env.ROCKETCHAT_USE_SSL)
@@ -106,7 +106,7 @@ class RocketChatBotAdapter extends Adapter {
         this.emit('connected') // tells hubot to load scripts
       })
       .catch((err) => {
-        this.robot.logger.error(`Unable to connect: ${JSON.stringify(err)}`)
+        this.robot.logger.error({ err, cause: err.cause ? { code: err.cause.code, message: err.cause.message ?? String(err.cause) } : undefined }, 'Unable to connect')
       })
   }
 
