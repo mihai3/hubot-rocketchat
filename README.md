@@ -141,6 +141,53 @@ adapter.
 
 [More info in Hubot's own docs here](https://hubot.github.com/docs/)
 
+### File Upload, Reactions and Attachments
+
+The adapter exposes first-class helpers for common file and reaction
+workflows. The most convenient spot is the hubot `Response` itself —
+inside a listener callback you can call them straight on `res`, with
+no room or message IDs needed:
+
+```javascript
+// scripts/files.mjs
+export default async (robot) => {
+  // Upload a file to the room of the incoming message (rooms.media).
+  // Buffer/Uint8Array/Blob input, with an optional caption; returns
+  // the API response containing the created message
+  robot.respond(/upload/i, async (res) => {
+    const buffer = Buffer.from('file contents')
+    await res.upload(buffer, 'notes.txt', 'Here are the notes')
+  })
+
+  // React to the incoming message (chat.react). Emoji name with or
+  // without colons, or a unicode emoji. Pass `false` to remove the
+  // reaction explicitly.
+  robot.respond(/tada/i, (res) => res.react(':tada:'))
+
+  // Download an attachment as a Buffer. Accepts the attachment object
+  // from an AttachmentMessage, or a URL (absolute or server-relative).
+  // The bot's credentials are sent automatically, so files in private
+  // rooms work too.
+  robot.respond(/images/i, async (res) => {
+    if (res.message.attachment?.type === 'image') {
+      const buffer = await robot.fetchAttachment(res.message.attachment)
+      const base64 = buffer.toString('base64')
+    }
+  })
+}
+```
+
+To react to a specific message by ID (e.g. from outside a listener),
+use `robot.react(messageId, emoji, reaction)`; uploads from outside a
+listener can use the REST escape hatch, e.g.
+`robot.adapter.apiCall('POST', 'rooms.media/' + rid, formData)`.
+
+Any other REST endpoint can be reached via
+`robot.adapter.apiCall('GET'|'POST'|'PUT'|'DELETE', endpoint, data, options)`
+(or the SDK's own `get`/`post`/... methods when no `options` argument is
+needed), and any realtime method via
+`robot.adapter.callMethod(method, ...args)`.
+
 ### Configuring Your Bot
 
 In local development, the following can be set in an `.env` file. In production

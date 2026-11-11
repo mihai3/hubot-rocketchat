@@ -38,6 +38,16 @@ class RocketChatResponse extends Response {
   sendPrivate (...strings) {
     this.robot.adapter.sendDirect(this.envelope, ...strings)
   }
+
+  /** Upload a file to the room this response belongs to (rooms.media) */
+  upload (buffer, filename, message) {
+    return uploadFile(this.robot.adapter, this.message.user.roomID, buffer, filename, message)
+  }
+
+  /** React to the message this response belongs to (chat.react) */
+  react (emoji, reaction = true) {
+    return reactToMessage(this.robot.adapter, this.message.id, emoji, reaction)
+  }
 }
 
 /** Define new message type for handling attachments */
@@ -97,6 +107,10 @@ class RocketChatBotAdapter extends Adapter {
 
     // Make the adapter's settings available to scripts, via `adapter.`
     this.settings = settings
+
+    // Convenience wrappers for scripts, available as `robot.`
+    this.robot.fetchAttachment = (attachmentOrUrl) => fetchAttachmentData(this, attachmentOrUrl)
+    this.robot.react = (messageId, emoji, reaction = true) => reactToMessage(this, messageId, emoji, reaction)
 
     this.connect()
       .then(() => this.login())
@@ -231,15 +245,15 @@ class RocketChatBotAdapter extends Adapter {
     // Attachments, format properties for Hubot
     if (Array.isArray(message.attachments) && message.attachments.length) {
       const attachment = message.attachments[0]
-      if (attachment.image_url) {
-        attachment.link = `http${settings.useSsl ? 's' : ''}://${settings.host}${attachment.image_url}`
-        attachment.type = 'image'
-      } else if (attachment.audio_url) {
-        attachment.link = `http${settings.useSsl ? 's' : ''}://${settings.host}${attachment.audio_url}`
-        attachment.type = 'audio'
-      } else if (attachment.video_url) {
-        attachment.link = `http${settings.useSsl ? 's' : ''}://${settings.host}${attachment.video_url}`
-        attachment.type = 'video'
+      const base = `http${settings.useSsl ? 's' : ''}://${settings.host}`
+      for (const kind of ['image', 'audio', 'video']) {
+        const url = attachment[`${kind}_url`]
+        if (url) {
+          // Only prefix relative paths; absolute URLs are left untouched
+          attachment.link = /^https?:\/\//i.test(url) ? url : `${base}${url.startsWith('/') ? '' : '/'}${url}`
+          attachment.type = kind
+          break
+        }
       }
       this.robot.logger.debug('Message type AttachmentMessage')
       return this.robot.receive(new AttachmentMessage(user, attachment, message.msg, message._id))
@@ -299,6 +313,78 @@ class RocketChatBotAdapter extends Adapter {
   callMethod (method, ...args) {
     return this.sdk.methodCall(method, ...args)
   }
+
+  /**
+   * REST call with a normalized argument order. The SDK's `request`
+   * takes an `ignore` RegExp before `options`; routing every
+   * options-bearing call through here avoids that trap.
+   */
+  apiCall (method, endpoint, data = {}, options = {}) {
+    return this.sdk.request(String(method).toUpperCase(), endpoint, data, undefined, options)
+  }
+
+/**
+ * REST call with a normalized argument order. The SDK's `request`
+ * takes an `ignore` RegExp before `options`; routing every
+ * options-bearing call through here avoids that trap.
+ */
+apiCall (method, endpoint, data = {}, options = {}) {
+  return this.sdk.request(String(method).toUpperCase(), endpoint, data, undefined, options)
+}
+}
+
+/** Ensure a REST session exists, logging in with the configured credentials if not */
+async function ensureLogin (adapter) {
+  if (adapter.sdk.loggedIn()) return
+  const credentials = settings.ldap
+    ? { ldap: true, username: settings.username, ldapPass: settings.password }
+    : { username: settings.username, password: settings.password }
+  return adapter.sdk.loginWithRest(credentials)
+}
+
+/**
+ * Upload a file to a room, posting it as a message with an optional
+ * caption. `buffer` may be a Buffer, Uint8Array, or Blob.
+ * Returns the API response (containing the created message).
+ */
+async function uploadFile (adapter, rid, buffer, filename, message = '') {
+  await ensureLogin(adapter)
+  const form = new FormData()
+  if (message) form.append('msg', typeof message === 'string' ? message : JSON.stringify(message))
+  form.append('file', new Blob([buffer]), filename)
+  // Pass the auth headers explicitly: the SDK client would otherwise add
+  // a Content-Type: application/json header, which corrupts multipart bodies
+  const { 'X-Auth-Token': token, 'X-User-Id': userId } = adapter.sdk.client.headers
+  return adapter.apiCall('POST', `rooms.media/${rid}`, form, { customHeaders: { 'X-Auth-Token': token, 'X-User-Id': userId } })
+}
+
+/**
+ * React to a message. `emoji` is the reaction name, with or without
+ * colons (e.g. 'tada' or ':tada:'), or a unicode emoji. Pass
+ * `reaction` as false to explicitly remove the reaction (chat.react
+ * toggles by default).
+ */
+async function reactToMessage (adapter, messageId, emoji, reaction = true) {
+  await ensureLogin(adapter)
+  return adapter.apiCall('POST', 'chat.react', { messageId, emoji, reaction })
+}
+
+/**
+ * Download an attachment and return it as a Buffer. Accepts an
+ * attachment object as delivered on AttachmentMessage (with a `link`
+ * property) or a plain URL (absolute, or relative to the Rocket.Chat
+ * server). The bot's credentials are sent as auth headers, so files
+ * in private rooms can be fetched too.
+ */
+async function fetchAttachmentData (adapter, attachmentOrUrl) {
+  await ensureLogin(adapter)
+  const base = `http${settings.useSsl ? 's' : ''}://${settings.host}`
+  let url = typeof attachmentOrUrl === 'string' ? attachmentOrUrl : attachmentOrUrl?.link
+  if (!url) throw new Error('No attachment URL provided')
+  if (!/^https?:\/\//i.test(url)) url = `${base}${url.startsWith('/') ? '' : '/'}${url}`
+  const res = await fetch(url, { headers: { ...adapter.sdk.client.headers } })
+  if (!res.ok) throw new Error(`Failed to download attachment: HTTP ${res.status}`)
+  return Buffer.from(await res.arrayBuffer())
 }
 
 export default {
