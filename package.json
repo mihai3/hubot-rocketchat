@@ -1,8 +1,11 @@
 {
   "name": "hubot-rocketchat",
-  "version": "2.0.0-development",
+  "version": "3.0.0-development",
+  "type": "module",
   "files": [
-    "index.js"
+    "index.js",
+    "vendor",
+    "script"
   ],
   "author": {
     "name": "Rocket.Chat",
@@ -44,19 +47,24 @@
     "email": "support@rocket.chat"
   },
   "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "prepare": "node script/build-sdk-vendor.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">= 18",
+    "npm": ">= 9"
+  },
   "dependencies": {
-    "@rocket.chat/sdk": "^0.2.1",
-    "hubot": "3"
+    "@rocket.chat/sdk": "github:RocketChat/Rocket.Chat.js.SDK#mobile"
   },
   "peerDependencies": {
-    "hubot": "3"
+    "hubot": "^14.1.1"
   },
   "devDependencies": {
-    "base64-url": "^2.0.0",
-    "debug": "^2.6.9",
-    "fresh": "^0.5.2",
-    "mime": "^1.4.1",
-    "morgan": "^1.9.1",
-    "negotiator": "^0.6.1"
+    "esbuild": "^0.28.2"
   }
 }

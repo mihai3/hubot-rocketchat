@@ -1,8 +1,18 @@
-# No longer supported
+# hubot-rocketchat
 
-We recommend taking a look at our apps engine
+Hubot adapter for Rocket.Chat!
 
-https://docs.rocket.chat/docs/rocketchat-private-apps
+Feel free to join us in the [#hubot](https://open.rocket.chat/channel/hubot) channel to discuss hubot, and any scripts you might be working on.
+
+## Important
+
+**BREAKING CHANGES:** v3.x.x contains major breaking changes. Starting with this version:
+* The adapter targets the latest [Hubot v14](https://github.com/hubotio/hubot) (ESM) — the adapter itself is now an ES Module
+* It uses the [2.0.0-mobile line of `@rocket.chat/sdk`](https://github.com/RocketChat/Rocket.Chat.js.SDK/tree/mobile), whose `Rocketchat` client covers both the REST api and the realtime DDP driver
+* [NodeJS 18](https://nodejs.org/) or later is required for operations
+* The same environment variables as v2.x.x are supported (`ROCKETCHAT_URL`, `ROCKETCHAT_USER`, `ROCKETCHAT_PASSWORD`, `ROCKETCHAT_ROOM`, `RESPOND_TO_DM`, `RESPOND_TO_LIVECHAT`, `RESPOND_TO_EDITED`, `INTEGRATION_ID`)
+
+For the older Hubot v3 based adapter, see the [v2.x.x branch/history](https://github.com/RocketChat/hubot-rocketchat/tree/v2.0.0-development).
 
 ![Rocket.Chat logo](https://rocket.chat/images/logo/logo-dark.svg?v3)
 
@@ -31,14 +41,11 @@ v1.x.x versions of the adapter is only compatible with 0.37.1 and higher of Rock
 
 If you are using Rocket.Chat 0.35.0 or earlier, please use v0.1.4 of the adapter.  (releases between 0.35.0 and 0.37.1 are not recommended for hubot operations)
 
-#### NOTE
-If you want to integrate Rocket.Chat with GitHub or GitLab.  Make sure you visit the [Rocket.Chat.Ops](https://github.com/RocketChat/Rocket.Chat.Ops) project before starting. We already have many scripts that add webhook events and access GitHub/GitLab APIs. You can easily extend these scripts for your custom application.
+#### For v3.x.x of the Adapter  (Hubot v14 and ESM support)
 
-### For v2.x.x of the Adapter  (Hubot v3 and ES6 support)
+If you are writing Hubot 2.x/3.x bots, please see [instructions for v1.x.x of the adapter](#For-v1.x.x-and-v0.x.x-of-the-Adatper).
 
-If you are writing CoffeeScript bots, need Hubot 2.x and v1.x.x or v0.x.x of the adapter, please see [instructions for v1.x.x of the adapter](#For-v1.x.x-and-v0.x.x-of-the-Adatper).
-
-The following instructions are ONLY for v2.x.x of the adapter.
+The following instructions are ONLY for v3.x.x of the adapter.
 
 #### Getting your bot connected to Rocket.Chat
 
@@ -106,14 +113,22 @@ accounts is to use gmail +addresses, e.g. `youremail+botnam@gmail.com`.
 
 Please see our boilerplate bot [Getting Started docs here][getting-started]!
 
-The boilerplate is essentially just a simple node package that requires Hubot,
-the Rocket.Chat adapter and Coffeescript for its execution...
+The boilerplate is essentially just a simple node package that requires Hubot
+and the Rocket.Chat adapter for its execution...
 
 ```
 "dependencies": {
-    "coffeescript": "^2.2.2",
-    "hubot": "3",
-    "hubot-rocketchat": "^2.0.0"
+    "hubot": "^14.1.1",
+    "hubot-rocketchat": "^3.0.0"
+}
+```
+
+Scripts are loaded as ES Modules or CommonJS modules — for example:
+
+```javascript
+// scripts/hello.mjs
+export default async (robot) => {
+  robot.respond(/hello/i, (res) => res.send('hi!'))
 }
 ```
 
@@ -121,32 +136,29 @@ The bot can then be executed using a bin file in production, [as seen here](http
 Or via the package scripts locally using `npm run local` or `yarn local`
 
 Using the boilerplate example, to start the bot in production, use
-`bin/hubot -a rocketchat` - will install dependencies and run the bot with this
+`npx hubot -a hubot-rocketchat` - will run the bot with this
 adapter.
 
 [More info in Hubot's own docs here](https://hubot.github.com/docs/)
 
 ### Configuring Your Bot
 
-[rcsdk-env]: https://github.com/rocketchat/rocket.chat.js.sdk#settings
-[hubot-env]: https://hubot.github.com/docs/scripting/#environment-variables
-
 In local development, the following can be set in an `.env` file. In production
 they would need to be set on server startup.
 
-The Rocket.Chat adapter implements the Rocket.Chat Node.js SDK to load all
+The Rocket.Chat adapter implements the Rocket.Chat Node.js SDK and loads all
 settings from the environment. So the following are just some of those settings,
-relevant to Hubot. It has some additional configs, [documented here][rcsdk-env].
+relevant to Hubot:
 
 | Env variable           | Description                                           |
 | ---------------------- | ----------------------------------------------------- |
 | **Hubot**		           | A subset of relevant [Hubot env vars][hubot-env]     |
-| `HUBOT_ADAPTER`        | Set to `rocketchat` (or pass as launch argument)      |
+| `HUBOT_ADAPTER`        | Set to `hubot-rocketchat` (or pass as launch argument)  |
 | `HUBOT_NAME`           | The programmatic name for listeners                   |
 | `HUBOT_ALIAS`          | An alternate name for the bot to respond to           |
 | `HUBOT_LOG_LEVEL`      | The minimum level of logs to output (error)                   |
 | `HUBOT_HTTPD`          | If the bot needs to listen to or make HTTP requests   |
-| **Rocket.Chat SDK**    | A subset of relevant [SDK env vars][rcsdk-env]        |
+| **Rocket.Chat SDK**    | Read by the adapter itself, from the environment      |
 | `ROCKETCHAT_URL`*      | Local Rocketchat address (start before the bot)       |
 | `ROCKETCHAT_USER`*     | Name in the platform (bot user must be created first) |
 | `ROCKETCHAT_PASSWORD`* | Matching the credentials setup in Rocket.Chat         |

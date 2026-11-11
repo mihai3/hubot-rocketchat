@@ -1,7 +1,8 @@
-FROM node:4.8.3
+FROM node:22
+
 MAINTAINER Rocket.Chat Team <buildmaster@rocket.chat>
 
-RUN npm install -g coffee-script yo generator-hubot  &&  \
+RUN npm install -g npm@9 && \
 	useradd hubot -m
 
 USER hubot
@@ -13,12 +14,13 @@ ENV BOT_OWNER "No owner specified"
 ENV BOT_DESC "Hubot with rocketbot adapter"
 ENV HUBOT_LOG_LEVEL "error"
 
-ENV EXTERNAL_SCRIPTS=hubot-diagnostics,hubot-help,hubot-google-images,hubot-google-translate,hubot-pugme,hubot-maps,hubot-rules,hubot-shipit
+ENV EXTERNAL_SCRIPTS=hubot-diagnostics,hubot-help
 
-RUN yo hubot --owner="$BOT_OWNER" --name="$BOT_NAME" --description="$BOT_DESC" --defaults && \
-	sed -i /heroku/d ./external-scripts.json && \
-	sed -i /redis-brain/d ./external-scripts.json && \
-	npm install hubot-scripts
+# Create a minimal ESM hubot project for the bot
+RUN npm init -y && \
+	npm pkg set type=module && \
+	echo "[]" > external-scripts.json && \
+	mkdir -p scripts
 
 ADD . /home/hubot/node_modules/hubot-rocketchat
 
@@ -27,11 +29,8 @@ USER root
 RUN chown hubot:hubot -R /home/hubot/node_modules/hubot-rocketchat
 USER hubot
 
-RUN cd /home/hubot/node_modules/hubot-rocketchat && \
-	npm install && \
-	#coffee -c /home/hubot/node_modules/hubot-rocketchat/src/*.coffee && \
-	cd /home/hubot
+RUN cd /home/hubot && \
+	npm install hubot@14 hubot-rocketchat@file:./node_modules/hubot-rocketchat && \
+	echo "export default (robot) => {}" > scripts/placeholder.mjs
 
-CMD node -e "console.log(JSON.stringify('$EXTERNAL_SCRIPTS'.split(',')))" > external-scripts.json && \
-	npm install $(node -e "console.log('$EXTERNAL_SCRIPTS'.split(',').join(' '))") && \
-	bin/hubot -n $BOT_NAME -a rocketchat
+CMD node_modules/.bin/hubot -n $BOT_NAME -a hubot-rocketchat
