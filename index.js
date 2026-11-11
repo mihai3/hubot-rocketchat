@@ -45,8 +45,8 @@ class RocketChatResponse extends Response {
   }
 
   /** React to the message this response belongs to (chat.react) */
-  react (emoji, reaction = true) {
-    return reactToMessage(this.robot.adapter, this.message.id, emoji, reaction)
+  react (emoji, shouldReact = true) {
+    return reactToMessage(this.robot.adapter, this.message.id, emoji, shouldReact)
   }
 }
 
@@ -110,7 +110,7 @@ class RocketChatBotAdapter extends Adapter {
 
     // Convenience wrappers for scripts, available as `robot.`
     this.robot.fetchAttachment = (attachmentOrUrl) => fetchAttachmentData(this, attachmentOrUrl)
-    this.robot.react = (messageId, emoji, reaction = true) => reactToMessage(this, messageId, emoji, reaction)
+    this.robot.react = (messageId, emoji, shouldReact = true) => reactToMessage(this, messageId, emoji, shouldReact)
 
     this.connect()
       .then(() => this.login())
@@ -344,29 +344,32 @@ async function ensureLogin (adapter) {
 
 /**
  * Upload a file to a room, posting it as a message with an optional
- * caption. `buffer` may be a Buffer, Uint8Array, or Blob.
- * Returns the API response (containing the created message).
+ * description. `buffer` may be a Buffer, Uint8Array, or Blob. Uploads
+ * the file via rooms.media, then confirms it (which posts the message)
+ * via rooms.mediaConfirm. Returns the confirm response (containing the
+ * created message).
  */
 async function uploadFile (adapter, rid, buffer, filename, message = '') {
   await ensureLogin(adapter)
   const form = new FormData()
-  if (message) form.append('msg', typeof message === 'string' ? message : JSON.stringify(message))
   form.append('file', new Blob([buffer]), filename)
   // Pass the auth headers explicitly: the SDK client would otherwise add
   // a Content-Type: application/json header, which corrupts multipart bodies
   const { 'X-Auth-Token': token, 'X-User-Id': userId } = adapter.sdk.client.headers
-  return adapter.apiCall('POST', `rooms.media/${rid}`, form, { customHeaders: { 'X-Auth-Token': token, 'X-User-Id': userId } })
+  const uploaded = await adapter.apiCall('POST', `rooms.media/${rid}`, form, { customHeaders: { 'X-Auth-Token': token, 'X-User-Id': userId } })
+  const fileId = uploaded?.file?._id ?? uploaded?.message?.file?._id
+  if (!fileId) throw new Error(`File upload did not return a file id: ${JSON.stringify(uploaded)}`)
+  return adapter.apiCall('POST', `rooms.mediaConfirm/${rid}/${fileId}`, { msg: '', description: message || '' })
 }
 
 /**
  * React to a message. `emoji` is the reaction name, with or without
  * colons (e.g. 'tada' or ':tada:'), or a unicode emoji. Pass
- * `reaction` as false to explicitly remove the reaction (chat.react
- * toggles by default).
+ * `shouldReact` as false to remove the reaction.
  */
-async function reactToMessage (adapter, messageId, emoji, reaction = true) {
+async function reactToMessage (adapter, messageId, emoji, shouldReact = true) {
   await ensureLogin(adapter)
-  return adapter.apiCall('POST', 'chat.react', { messageId, emoji, reaction })
+  return adapter.apiCall('POST', 'chat.react', { messageId, emoji, shouldReact })
 }
 
 /**
