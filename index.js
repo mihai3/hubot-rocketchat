@@ -14,8 +14,12 @@ const settings = {
   username: process.env.ROCKETCHAT_USER || 'bot',
   password: process.env.ROCKETCHAT_PASSWORD || 'pass',
   ldap: process.env.ROCKETCHAT_AUTH === 'ldap',
-  host: (process.env.ROCKETCHAT_URL || 'localhost:3000').replace(/(^\w+:|^)\/\//, ''),
-  useSsl: /^true$/i.test(process.env.ROCKETCHAT_USE_SSL || ''),
+  host: (process.env.ROCKETCHAT_URL || 'localhost:3000').replace(/(^\w+:|^)\/\//, ''),
+  // Enable SSL by default if the Rocket.Chat URL contains https, as the
+  // 0.2.x SDK did; ROCKETCHAT_USE_SSL=true|false overrides explicitly
+  useSsl: (process.env.ROCKETCHAT_USE_SSL)
+    ? (process.env.ROCKETCHAT_USE_SSL.toLowerCase() === 'true')
+    : (process.env.ROCKETCHAT_URL || '').toLowerCase().startsWith('https'),
   timeout: DEFAULT_TIMEOUT,
   rooms: (process.env.ROCKETCHAT_ROOM || '').split(',').map((room) => room.trim()).filter(Boolean),
   allPublic: (process.env.LISTEN_ON_ALL_PUBLIC || 'false').toLowerCase() === 'true',
