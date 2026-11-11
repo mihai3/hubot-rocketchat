@@ -2,30 +2,24 @@
 
 Hubot adapter for Rocket.Chat!
 
-Feel free to join us in the [#hubot](https://open.rocket.chat/channel/hubot) channel to discuss hubot, and any scripts you might be working on.
+## What's new in this fork
 
-## Important
-
-**BREAKING CHANGES:** v3.x.x contains major breaking changes. Starting with this version:
+Starting with this version:
 * The adapter targets the latest [Hubot v14](https://github.com/hubotio/hubot) (ESM) — the adapter itself is now an ES Module
 * It uses the [2.0.0-mobile line of `@rocket.chat/sdk`](https://github.com/RocketChat/Rocket.Chat.js.SDK/tree/mobile), whose `Rocketchat` client covers both the REST api and the realtime DDP driver
 * [NodeJS 18](https://nodejs.org/) or later is required for operations
 * The same environment variables as v2.x.x are supported (`ROCKETCHAT_URL`, `ROCKETCHAT_USER`, `ROCKETCHAT_PASSWORD`, `ROCKETCHAT_ROOM`, `RESPOND_TO_DM`, `RESPOND_TO_LIVECHAT`, `RESPOND_TO_EDITED`, `INTEGRATION_ID`)
 
-For the older Hubot v3 based adapter, see the [v2.x.x branch/history](https://github.com/RocketChat/hubot-rocketchat/tree/v2.0.0-development).
+The adapter now has a few functions to enable uploading files, reading
+attachments and sending reactions:
 
-![Rocket.Chat logo](https://rocket.chat/images/logo/logo-dark.svg?v3)
-
-[![Rocket.Chat](https://open.rocket.chat/api/v1/shield.svg?type=channel&name=Rocket.Chat&channel=hubot)](https://open.rocket.chat/channel/hubot)
-[![Test Coverage](https://codeclimate.com/github/RocketChat/hubot-rocketchat/badges/coverage.svg)](https://codeclimate.com/github/RocketChat/hubot-rocketchat/coverage)
-[![Code Climate](https://codeclimate.com/github/RocketChat/hubot-rocketchat/badges/gpa.svg)](https://codeclimate.com/github/RocketChat/hubot-rocketchat)
-[![MIT License](http://img.shields.io/badge/license-MIT-blue.svg?style=flat)](https://github.com/RocketChat/Rocket.Chat/raw/master/LICENSE)
-
-# hubot-rocketchat
-
-Hubot adapter for Rocket.Chat!
-
-Feel free to join us in the [#hubot](https://open.rocket.chat/channel/hubot) channel to discuss hubot, and any scripts you might be working on.
+```javascript
+await res.react(':tada:')                                  // in a listener callback
+await res.react(':tada:', false)                           // unset a reaction
+await res.upload(imageBuffer, 'photo.png', 'Here you go')  // in a listener callback
+await robot.react(res.message.id, ':tada:')                // by message id
+await robot.fetchAttachment(res.message.attachment)        // -> Buffer
+```
 
 ## Important
 
@@ -162,7 +156,9 @@ export default async (robot) => {
   // React to the incoming message (chat.react). Emoji name with or
   // without colons, or a unicode emoji. Pass `false` to remove the
   // reaction explicitly.
-  robot.respond(/tada/i, (res) => res.react(':tada:'))
+  robot.respond(/tada/i, async (res) => {
+    await res.react(':tada:')
+  })
 
   // Download an attachment as a Buffer. Accepts the attachment object
   // from an AttachmentMessage, or a URL (absolute or server-relative).
@@ -176,17 +172,6 @@ export default async (robot) => {
   })
 }
 ```
-
-To react to a specific message by ID (e.g. from outside a listener),
-use `robot.react(messageId, emoji, reaction)`; uploads from outside a
-listener can use the REST escape hatch, e.g.
-`robot.adapter.apiCall('POST', 'rooms.media/' + rid, formData)`.
-
-Any other REST endpoint can be reached via
-`robot.adapter.apiCall('GET'|'POST'|'PUT'|'DELETE', endpoint, data, options)`
-(or the SDK's own `get`/`post`/... methods when no `options` argument is
-needed), and any realtime method via
-`robot.adapter.callMethod(method, ...args)`.
 
 ### Configuring Your Bot
 
