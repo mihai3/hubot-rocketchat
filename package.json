@@ -58,13 +58,13 @@
     "node": ">= 18",
     "npm": ">= 9"
   },
-  "dependencies": {
-    "@rocket.chat/sdk": "github:RocketChat/Rocket.Chat.js.SDK#mobile"
-  },
   "peerDependencies": {
     "hubot": "^14.1.1"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
+  },
+  "optionalDependencies": {
+    "@rocket.chat/sdk": "github:RocketChat/Rocket.Chat.js.SDK#mobile"
   }
 }
