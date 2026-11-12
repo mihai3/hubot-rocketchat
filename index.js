@@ -111,6 +111,9 @@ class RocketChatBotAdapter extends Adapter {
     // Convenience wrappers for scripts, available as `robot.`
     this.robot.fetchAttachment = (attachmentOrUrl) => fetchAttachmentData(this, attachmentOrUrl)
     this.robot.react = (messageId, emoji, shouldReact = true) => reactToMessage(this, messageId, emoji, shouldReact)
+    // Room id variant: res-based upload resolves the room when called, which
+    // can go stale across awaits in the listener
+    this.robot.upload = (roomId, buffer, filename, message = '') => uploadFile(this, roomId, buffer, filename, message)
 
     this.connect()
       .then(() => this.login())

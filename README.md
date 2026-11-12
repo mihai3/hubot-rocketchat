@@ -18,6 +18,7 @@ await res.react(':tada:')                                  // in a listener call
 await res.react(':tada:', false)                           // unset a reaction
 await res.upload(imageBuffer, 'photo.png', 'Here you go')  // in a listener callback
 await robot.react(res.message.id, ':tada:')                // by message id
+await robot.upload(rid, buffer, filename, 'Here you go')   // by room id, safe across awaits
 await robot.fetchAttachment(res.message.attachment)        // -> Buffer
 ```
 
