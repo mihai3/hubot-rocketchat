@@ -125,6 +125,25 @@ class RocketChatBotAdapter extends Adapter {
       .catch((err) => {
         this.robot.logger.error({ err, cause: err.cause ? { code: err.cause.code, message: err.cause.message ?? String(err.cause) } : undefined }, 'Unable to connect')
       })
+      .finally(() => {
+        // From here on, recover from connection drops. The SDK reopens the
+        // transport after an unexpected close (e.g. code 1006), but neither
+        // re-logs-in nor re-subscribes, which would leave the bot deaf on
+        // the new (unauthenticated) session. Redo both on every reconnect.
+        this.ready = true
+        this.sdk.driver.on('connected', () => {
+          if (!this.ready) return // initial connect is handled by the chain above
+          this.ready = false
+          this.robot.logger.info('[reconnect] Re-authenticating and resubscribing')
+          this.login()
+            .then(() => this.subscribe())
+            .catch((err) => this.robot.logger.error({ err, cause: err.cause ? { code: err.cause.code, message: err.cause.message ?? String(err.cause) } : undefined }, '[reconnect] Failed to recover'))
+            .finally(() => {
+              this.ready = true
+              this.emit('connected')
+            })
+        })
+      })
   }
 
   /** Connect the realtime driver */
@@ -161,7 +180,9 @@ class RocketChatBotAdapter extends Adapter {
    * callback which processes every message update
    */
   async subscribe () {
-    this.lastReadTime = new Date() // init before any message read
+    // init before any message read; preserved across reconnects so messages
+    // missed during a connection outage are still processed afterwards
+    if (!this.lastReadTime) this.lastReadTime = new Date()
     await this.sdk.subscribeRaw(MESSAGE_STREAM, [MESSAGE_STREAM_NAME])
     return this.sdk.driver.onStreamData(MESSAGE_STREAM, (frame) => {
       try {
