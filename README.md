@@ -4,10 +4,33 @@ Hubot adapter for Rocket.Chat!
 
 ## What's new in this fork
 
-Starting with this version:
+```text
+                          ░░░░░▓▓▒
+                     ░░▒▓▓▓▓▓▓▓▓▓▒░
+                  ░▒▓▓▓▓▓▓▒▒▒▒▒▓▓▓▓▒
+                ░▒▓▓▓▓▒░░      ░▒▓▓▓▒
+             ░▒▓▓▓▓▒░░          ░▒▓▓▓▒
+           ░▒▓▓▓▓▒░              ░▒▓▒▒
+         ▒▓▓▓▓▓▒░    ▒▒░          ▒▓▒▒░
+      ░▒▓▓▓▓▒░░      ░░           ▒▓▒▒░
+    ░▒▓▓▓▒▒░    ░░▒▒▒▒▒░░░        ░▒▓▒▒                        H U B O T
+   ▒▒▒▒▒▒░    ░▓█▓▓▓▓▓▓▒▒▒▒▒      ░▒▓▓▓                        R O C K E T . C H A T
+ ░▒▒▒▒░░     ░▓█▓▓▓▓▓▒▒░░▓▓▓▒      ▒▓▓▓░                       A D A P T E R
+░░▒▒░░       ▒▓█▓▒▒▒▓░░░▒▓▒▒▓░     ▒▓▓▓▒
+░░░░░        ░▒░░░░░░░░░░░░░▒      ▒▒▓▓▒
+ ░░░░         ░░░░░░░░░░░░░░       ▒▒▓▓▓
+ ▒▒░░░        ░▒▒▒▒░░░░░░░░        ▒▓▓▓▒
+ ░▒░░░░░    ░▓▓▓▓▓▓▓▓▒▒▒░░░░░    ░▒▓▓▓▓░
+    ░░░░░░░ ▒▒▒▓▓▓▒▒▒▒▒░░░░░░░░░▒▓▓▓▓▒░
+       ░░░░░░░░░░░░░░░░░░░▒▒▒▓▓▓▓▓▓▓▓
+          ░░░░░░░░░░▒▒▒▓▓▓▓▓▓▓▓▒▒░░░░
+                ░░░░░▒▒▒▒▒░░░░
+```
+
 * The adapter targets the latest [Hubot v14](https://github.com/hubotio/hubot) (ESM) — the adapter itself is now an ES Module
 * It uses the [2.0.0-mobile line of `@rocket.chat/sdk`](https://github.com/RocketChat/Rocket.Chat.js.SDK/tree/mobile), whose `Rocketchat` client covers both the REST api and the realtime DDP driver
 * [NodeJS 18](https://nodejs.org/) or later is required for operations
+* The adapter recovers automatically after a DDP connection loss (e.g. WebSocket close code 1006): whenever the driver reports a reconnection, login and the `stream-room-messages` subscription are re-issued. Note that the stream does **not** replay events missed while disconnected — there is no backfill. `lastReadTime` is preserved across reconnects to keep the dedup watermark consistent instead: notably for edited messages, whose `editedAt` timestamps are older than the reconnect moment and would be dropped forever if the watermark were reset to the current time
 * The same environment variables as v2.x.x are supported (`ROCKETCHAT_URL`, `ROCKETCHAT_USER`, `ROCKETCHAT_PASSWORD`, `ROCKETCHAT_ROOM`, `RESPOND_TO_DM`, `RESPOND_TO_LIVECHAT`, `RESPOND_TO_EDITED`, `INTEGRATION_ID`)
 
 The adapter now has a few functions to enable uploading files, reading
