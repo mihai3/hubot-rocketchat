@@ -356,6 +356,22 @@ class RocketChatBotAdapter extends Adapter {
   }
 
   /**
+   * Open (or reuse) a direct message room with a user. The SDK posts
+   * im.create, which the OpenAPI spec no longer lists for recent
+   * servers (the DM group is specified as dm.create); try dm.create
+   * first and fall back to the SDK's im.create for older servers.
+   */
+  async resolveDirectRoom (username) {
+    try {
+      const body = await this.apiCall('POST', 'dm.create', { username })
+      return body.room._id
+    } catch (err) {
+      const room = await this.sdk.createDirectMessage(username)
+      return room._id
+    }
+  }
+
+  /**
    * Send a message over the REST chat.sendMessage endpoint. The SDK's
    * sendMessage embeds a roomId field in the message object, which
    * Rocket.Chat 9 rejects ("The message fields cannot be set through
@@ -398,8 +414,7 @@ class RocketChatBotAdapter extends Adapter {
   /** Send DM to user */
   async sendDirect (envelope, ...strings) {
     return this.logRejections('sendDirect', Promise.all(strings.map(async (text) => {
-      const room = await this.sdk.createDirectMessage(envelope.user.name)
-      return this.sendChatMessage(room._id, text)
+      return this.sendChatMessage(await this.resolveDirectRoom(envelope.user.name), text)
     })))
   }
 
