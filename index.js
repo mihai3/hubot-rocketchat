@@ -165,14 +165,32 @@ class RocketChatBotAdapter extends Adapter {
   async joinRooms () {
     for (const room of settings.rooms) {
       try {
-        const rid = await this.sdk.getRoomIdByNameOrId(room)
+        const rid = await this.resolveRoomId(room)
         await this.sdk.methodCall('joinRoom', rid)
         this.joinedIds = [...(this.joinedIds || []), rid]
         this.robot.logger.info(`[startup] Joined room: ${room}`)
       } catch (err) {
-        this.robot.logger.error(`[joinRooms] Failed to join configured room (${room}): ${JSON.stringify(err)}`)
+        this.robot.logger.error({ room, err: describeError(err) }, `[joinRooms] Failed to join configured room (${room})`)
       }
     }
+  }
+
+  /**
+   * Resolve a room name or id to a rid. Rocket.Chat 9 removed the
+   * deprecated chat.getRoomIdByNameOrId endpoint, so prefer rooms.info
+   * (which accepts roomId or roomName) and keep the legacy endpoint as a
+   * fallback for older servers.
+   */
+  async resolveRoomId (room) {
+    try {
+      const byId = await this.apiCall('GET', 'rooms.info', { roomId: room })
+      return byId.room._id
+    } catch (err) { /* not a room id; try as name */ }
+    try {
+      const byName = await this.apiCall('GET', 'rooms.info', { roomName: room })
+      return byName.room._id
+    } catch (err) { /* not a room name; try the legacy endpoint */ }
+    return this.sdk.getRoomIdByNameOrId(room)
   }
 
   /**
@@ -328,9 +346,9 @@ class RocketChatBotAdapter extends Adapter {
     return this.send(envelope, ...strings)
   }
 
-  /** Get a room ID via the REST api */
+  /** Get a room ID via the REST api (RC9-safe; see resolveRoomId) */
   getRoomId (room) {
-    return this.sdk.getRoomIdByNameOrId(room)
+    return this.resolveRoomId(room)
   }
 
   /** Call a server method via the realtime driver */
@@ -355,6 +373,21 @@ class RocketChatBotAdapter extends Adapter {
 apiCall (method, endpoint, data = {}, options = {}) {
   return this.sdk.request(String(method).toUpperCase(), endpoint, data, undefined, options)
 }
+}
+
+/**
+ * Flatten an error for logging. The SDK's REST layer throws either plain
+ * Errors (whose own props are non-enumerable, so JSON.stringify renders
+ * them as {}) or { status, data } objects; extract what is useful.
+ */
+function describeError (err) {
+  if (!err || typeof err !== 'object') return { error: String(err) }
+  return {
+    message: err.message,
+    status: err.status,
+    data: err.data,
+    cause: err.cause ? { code: err.cause.code, message: err.cause.message ?? String(err.cause) } : undefined
+  }
 }
 
 /** Ensure a REST session exists, logging in with the configured credentials if not */
