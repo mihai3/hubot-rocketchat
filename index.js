@@ -185,39 +185,29 @@ class RocketChatBotAdapter extends Adapter {
   /**
    * Join a room. Rocket.Chat 9's channels.join requires `roomName` and
    * rejects `roomId` as an additional property; older servers wanted
-   * `roomId`. Try the RC9 shape first, then the legacy one, then the
-   * legacy DDP joinRoom method (removed in Rocket.Chat 9). Private
-   * groups cannot be self-joined; the bot must be invited.
+   * `roomId`. Private groups cannot be self-joined; the bot must be
+   * invited.
    */
   async joinRoomById (room, rid) {
     try {
       await this.apiCall('POST', 'channels.join', { roomName: room })
-    } catch (errName) {
-      try {
-        await this.apiCall('POST', 'channels.join', { roomId: rid, joinPublic: true })
-      } catch (errId) {
-        this.robot.logger.debug({ room, err: describeError(errId) }, '[joinRooms] channels.join failed, trying DDP joinRoom')
-        await this.sdk.methodCall('joinRoom', rid)
-      }
+    } catch (err) {
+      await this.apiCall('POST', 'channels.join', { roomId: rid, joinPublic: true })
     }
   }
 
   /**
-   * Resolve a room name or id to a rid. Rocket.Chat 9 removed the
-   * deprecated chat.getRoomIdByNameOrId endpoint, so prefer rooms.info
-   * (which accepts roomId or roomName) and keep the legacy endpoint as a
-   * fallback for older servers.
+   * Resolve a room name or id to a rid via rooms.info (query accepts
+   * either roomId or roomName; the deprecated chat.getRoomIdByNameOrId
+   * was removed in Rocket.Chat 9).
    */
   async resolveRoomId (room) {
-    try {
-      const byId = await this.apiCall('GET', 'rooms.info', { roomId: room })
-      return byId.room._id
-    } catch (err) { /* not a room id; try as name */ }
-    try {
-      const byName = await this.apiCall('GET', 'rooms.info', { roomName: room })
-      return byName.room._id
-    } catch (err) { /* not a room name; try the legacy endpoint */ }
-    return this.sdk.getRoomIdByNameOrId(room)
+    for (const param of ['roomId', 'roomName']) {
+      try {
+        return (await this.apiCall('GET', 'rooms.info', { [param]: room })).room._id
+      } catch (err) { /* not a room id; try as name */ }
+    }
+    throw new Error(`Room not found: ${room}`)
   }
 
   /**
@@ -238,7 +228,11 @@ class RocketChatBotAdapter extends Adapter {
     })
   }
 
-  /** Hand a message to hubot, logging instead of leaking a rejection */
+  /**
+   * Hand a message to hubot. robot.receive is async in hubot v14; its
+   * rejection must be handled here or an error inside a script or
+   * middleware kills the whole process as an unhandled rejection.
+   */
   dispatchSafely (message) {
     return Promise.resolve(this.robot.receive(message)).catch((err) => {
       this.robot.logger.error({ err: describeError(err) }, '[received] Error dispatching message')
@@ -338,12 +332,7 @@ class RocketChatBotAdapter extends Adapter {
     // Standard text messages, receive as is
     const textMessage = new TextMessage(user, message.msg, message._id)
     this.robot.logger.debug(`TextMessage: ${textMessage.toString()}`)
-    // robot.receive is async in hubot v14; its rejection must be handled
-    // here or an error inside a script/middleware kills the whole process
-    // as an unhandled promise rejection
-    return Promise.resolve(this.robot.receive(textMessage)).catch((err) => {
-      this.robot.logger.error({ err: describeError(err) }, '[received] Error dispatching message')
-    })
+    return this.dispatchSafely(textMessage)
   }
 
   /** Send messages to user addressed in envelope */
@@ -353,22 +342,6 @@ class RocketChatBotAdapter extends Adapter {
       const rid = await this.getRoomId(envelope.room)
       return this.sendChatMessage(rid, text)
     })))
-  }
-
-  /**
-   * Open (or reuse) a direct message room with a user. The SDK posts
-   * im.create, which the OpenAPI spec no longer lists for recent
-   * servers (the DM group is specified as dm.create); try dm.create
-   * first and fall back to the SDK's im.create for older servers.
-   */
-  async resolveDirectRoom (username) {
-    try {
-      const body = await this.apiCall('POST', 'dm.create', { username })
-      return body.room._id
-    } catch (err) {
-      const room = await this.sdk.createDirectMessage(username)
-      return room._id
-    }
   }
 
   /**
@@ -414,7 +387,8 @@ class RocketChatBotAdapter extends Adapter {
   /** Send DM to user */
   async sendDirect (envelope, ...strings) {
     return this.logRejections('sendDirect', Promise.all(strings.map(async (text) => {
-      return this.sendChatMessage(await this.resolveDirectRoom(envelope.user.name), text)
+      const body = await this.apiCall('POST', 'dm.create', { username: envelope.user.name })
+      return this.sendChatMessage(body.room._id, text)
     })))
   }
 
