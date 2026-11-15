@@ -115,7 +115,7 @@ class RocketChatBotAdapter extends Adapter {
     // can go stale across awaits in the listener
     this.robot.upload = (roomId, buffer, filename, message = '') => uploadFile(this, roomId, buffer, filename, message)
 
-    this.connect()
+    return this.connect()
       .then(() => this.login())
       .then(() => this.joinRooms())
       .then(() => this.subscribe())
@@ -126,6 +126,13 @@ class RocketChatBotAdapter extends Adapter {
         this.robot.logger.error({ err, cause: err.cause ? { code: err.cause.code, message: err.cause.message ?? String(err.cause) } : undefined }, 'Unable to connect')
       })
       .finally(() => {
+        // Last-resort safety net: log stray rejections from SDK internals
+        // or user scripts instead of letting Node's default mode kill the
+        // process (an unhandled rejection is fatal since Node 15).
+        process.on('unhandledRejection', (reason) => {
+          this.robot.logger.error({ err: describeError(reason) }, '[unhandledRejection]')
+        })
+
         // From here on, recover from connection drops. The SDK reopens the
         // transport after an unexpected close (e.g. code 1006), but neither
         // re-logs-in nor re-subscribes, which would leave the bot deaf on
@@ -231,6 +238,13 @@ class RocketChatBotAdapter extends Adapter {
     })
   }
 
+  /** Hand a message to hubot, logging instead of leaking a rejection */
+  dispatchSafely (message) {
+    return Promise.resolve(this.robot.receive(message)).catch((err) => {
+      this.robot.logger.error({ err: describeError(err) }, '[received] Error dispatching message')
+    })
+  }
+
   /** Process every incoming message in the subscription */
   process (frame) {
     const args = frame?.fields?.args || []
@@ -290,13 +304,13 @@ class RocketChatBotAdapter extends Adapter {
     // Room joins, receive without further detail
     if (message.t === 'uj') {
       this.robot.logger.debug('Message type EnterMessage')
-      return this.robot.receive(new EnterMessage(user, null, message._id))
+      return this.dispatchSafely(new EnterMessage(user, null, message._id))
     }
 
     // Room exit, receive without further detail
     if (message.t === 'ul') {
       this.robot.logger.debug('Message type LeaveMessage')
-      return this.robot.receive(new LeaveMessage(user, null, message._id))
+      return this.dispatchSafely(new LeaveMessage(user, null, message._id))
     }
 
     // Direct messages prepend bot's name so Hubot can `.respond`
@@ -324,16 +338,47 @@ class RocketChatBotAdapter extends Adapter {
     // Standard text messages, receive as is
     const textMessage = new TextMessage(user, message.msg, message._id)
     this.robot.logger.debug(`TextMessage: ${textMessage.toString()}`)
-    return this.robot.receive(textMessage)
+    // robot.receive is async in hubot v14; its rejection must be handled
+    // here or an error inside a script/middleware kills the whole process
+    // as an unhandled promise rejection
+    return Promise.resolve(this.robot.receive(textMessage)).catch((err) => {
+      this.robot.logger.error({ err: describeError(err) }, '[received] Error dispatching message')
+    })
   }
 
   /** Send messages to user addressed in envelope */
   async send (envelope, ...strings) {
-    return Promise.all(strings.map(async (text) => {
-      if (envelope.user && envelope.user.roomID) return this.sdk.sendMessage(text, envelope.user.roomID)
+    return this.logRejections('send', Promise.all(strings.map(async (text) => {
+      if (envelope.user && envelope.user.roomID) return this.sendChatMessage(envelope.user.roomID, text)
       const rid = await this.getRoomId(envelope.room)
-      return this.sdk.sendMessage(text, rid)
-    }))
+      return this.sendChatMessage(rid, text)
+    })))
+  }
+
+  /**
+   * Send a message over the REST chat.sendMessage endpoint. The SDK's
+   * sendMessage embeds a roomId field in the message object, which
+   * Rocket.Chat 9 rejects ("The message fields cannot be set through
+   * 'chat.sendMessage': roomId"); address the room with rid inside the
+   * message instead, which older servers also accept.
+   */
+  async sendChatMessage (rid, textOrMessage) {
+    await ensureLogin(this)
+    const base = typeof textOrMessage === 'string' ? { msg: textOrMessage } : textOrMessage
+    const { roomId, ...message } = { rid, ...base }
+    return this.apiCall('POST', 'chat.sendMessage', { message }).then((body) => body?.message ?? body)
+  }
+
+  /**
+   * Attach a logging catch so scripts that fire-and-forget a send (no
+   * await) do not produce unhandled rejections that crash the process;
+   * awaiting callers still receive the rejection.
+   */
+  logRejections (context, promise) {
+    promise.catch((err) => {
+      this.robot.logger.error({ err: describeError(err) }, `[send] Error in ${context}`)
+    })
+    return promise
   }
 
   /**
@@ -346,16 +391,16 @@ class RocketChatBotAdapter extends Adapter {
 
   /** Send custom message to user */
   async customMessage (data) {
-    const { rid, ...message } = data
-    return this.sdk.sendMessage(message, rid)
+    const { rid, ...fields } = data
+    return this.sendChatMessage(rid, fields)
   }
 
   /** Send DM to user */
   async sendDirect (envelope, ...strings) {
-    return Promise.all(strings.map(async (text) => {
+    return this.logRejections('sendDirect', Promise.all(strings.map(async (text) => {
       const room = await this.sdk.createDirectMessage(envelope.user.name)
-      return this.sdk.sendMessage(text, room._id)
-    }))
+      return this.sendChatMessage(room._id, text)
+    })))
   }
 
   /** Reply to a user's message (mention them if not a DM) */
