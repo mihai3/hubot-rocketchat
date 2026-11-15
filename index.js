@@ -176,17 +176,22 @@ class RocketChatBotAdapter extends Adapter {
   }
 
   /**
-   * Join a room via REST channels.join, falling back to the legacy
-   * joinRoom DDP method for servers that no longer answer the REST call
-   * but still have the realtime method (removed in Rocket.Chat 9).
-   * Private groups cannot be self-joined; the bot must be invited.
+   * Join a room. Rocket.Chat 9's channels.join requires `roomName` and
+   * rejects `roomId` as an additional property; older servers wanted
+   * `roomId`. Try the RC9 shape first, then the legacy one, then the
+   * legacy DDP joinRoom method (removed in Rocket.Chat 9). Private
+   * groups cannot be self-joined; the bot must be invited.
    */
   async joinRoomById (room, rid) {
     try {
-      await this.apiCall('POST', 'channels.join', { roomId: rid, joinPublic: true })
-    } catch (err) {
-      this.robot.logger.debug({ room, err: describeError(err) }, '[joinRooms] channels.join failed, trying DDP joinRoom')
-      await this.sdk.methodCall('joinRoom', rid)
+      await this.apiCall('POST', 'channels.join', { roomName: room })
+    } catch (errName) {
+      try {
+        await this.apiCall('POST', 'channels.join', { roomId: rid, joinPublic: true })
+      } catch (errId) {
+        this.robot.logger.debug({ room, err: describeError(errId) }, '[joinRooms] channels.join failed, trying DDP joinRoom')
+        await this.sdk.methodCall('joinRoom', rid)
+      }
     }
   }
 
