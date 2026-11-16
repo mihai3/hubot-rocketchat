@@ -124,6 +124,12 @@ class RocketChatBotAdapter extends Adapter {
       })
       .catch((err) => {
         this.robot.logger.error({ err, cause: err.cause ? { code: err.cause.code, message: err.cause.message ?? String(err.cause) } : undefined }, 'Unable to connect')
+        // A failed initial connection leaves the SDK idle: its retry loop
+        // only covers attempts flagged as recovery, and the first attempt
+        // is not. Kick one now; every failure after that is a recovery
+        // attempt and retries forever, and the 'connected' handler below
+        // completes login, room joining and subscribing.
+        if (!this.sdk.driver.connected) this.sdk.driver.reopenNow()
       })
       .finally(() => {
         // Last-resort safety net: log stray rejections from SDK internals
@@ -143,6 +149,10 @@ class RocketChatBotAdapter extends Adapter {
           this.ready = false
           this.robot.logger.info('[reconnect] Re-authenticating and resubscribing')
           this.login()
+            .then(() => {
+              // Complete a startup that had failed before joining rooms
+              if (!this.joinedIds?.length) return this.joinRooms()
+            })
             .then(() => this.subscribe())
             .catch((err) => this.robot.logger.error({ err, cause: err.cause ? { code: err.cause.code, message: err.cause.message ?? String(err.cause) } : undefined }, '[reconnect] Failed to recover'))
             .finally(() => {
